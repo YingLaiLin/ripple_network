@@ -1,0 +1,2 @@
+model_checkpoint_path: "ripple.ckpt"
+all_model_checkpoint_paths: "ripple.ckpt"
