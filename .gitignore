@@ -1,7 +1,7 @@
 # ignore tensorflow file 
-/checkpoint
+/checkpoint/*
 /logs
-
+/logs/*
 # ignore data
 /data
 
