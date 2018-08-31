@@ -53,7 +53,7 @@ print(tf.trainable_variables())
 
 
 adj = user
-u = tf.zeros([1,config.embedding_size])
+u = None
 
 for layer_num in range(1, config.hops + 1):
     print('construction of ripple layer %d' % layer_num)
@@ -80,7 +80,8 @@ for layer_num in range(1, config.hops + 1):
             v = tf.nn.embedding_lookup(item_embeddings, item)
             v_tile = tf.tile(tf.expand_dims(v,0), [tf.size(heads),1,1], name='v_stack')   # 复制 v，方便计算
             softmax_item = tf.matmul(tf.matmul(v_tile, r), tf.transpose(head_embeddings,[0,2,1]), name='cal_softmax_matrix')
-            p = tf.nn.softmax(softmax_item, name='softmax')
+            # TODO 
+            p = tf.nn.softmax(tf.layers.batch_normalization(softmax_item), name='softmax')
             p = tf.reshape(p, shape=[-1,1])
             tail_embeddings = tf.nn.embedding_lookup(entity_embeddings, tails)
             # o = tf.reduce_mean(tf.matmul(p, tail_embeddings),axis=1, keep_dims=True)
@@ -97,18 +98,21 @@ for layer_num in range(1, config.hops + 1):
             # mean, var = mean_var_with_update()        
             # o = tf.nn.batch_normalization(o, 0, 1, shift, scale, 0.001)
             # o = tf.layers.batch_normalization(o, True)  #TODO 是否可以加速训练？
-            u = tf.concat([u, o], axis=0)        
+            if u is None:
+                u = [o]
+            else:
+                u = tf.concat([u, o], axis=1)      
 
-u = tf.reduce_mean(tf.multiply(u, a),axis=0)
+u = tf.reduce_mean(tf.multiply(u, a),axis=1)
 u = tf.reshape(u,[1,-1])
 with tf.name_scope('output_layer'):
-    y = tf.sigmoid(tf.matmul(v, tf.transpose(u)))
+    y = tf.sigmoid(tf.matmul(u, tf.transpose(v)))
 
 with tf.device(gpu):
     with tf.name_scope('loss_layer'):
         with tf.name_scope('cal_entropy_loss'):
             label = tf.cast(tf.reshape(label, shape=[-1,1]), tf.float32)
-            entropy_loss = label*tf.log(y + 1e-10) + (1-label)*tf.log(y + 1e-10)
+            entropy_loss = label * tf.log(tf.clip_by_value(y,1e-8,1.0)) + (1-label) * tf.log(tf.clip_by_value(y,1e-8,1.0))
             L1 = - tf.reduce_sum(entropy_loss)
         with tf.name_scope('cal_sim_loss'):
             L2_norm = 0
