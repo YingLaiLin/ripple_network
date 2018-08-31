@@ -7,12 +7,12 @@ import utils
 import config
 import networkx as nx
 import numpy as np
+import mail_utils
 from sklearn import metrics
-
 from tensorflow.python.client import timeline
 
 
-network,label_mapping, node_mapping = utils.read_network(config.network_path, config.interest_relations)
+network,label_mapping = utils.read_network(config.network_path, config.interest_relations)
 
 num_nodes = len(network.node) 
 num_nodes = config.num_nodes
@@ -92,7 +92,7 @@ for layer_num in range(1, config.hops + 1):
             # ema = tf.train.ExponentialMovingAverage(decay=0.5)
             # def mean_var_with_update():
             #     ema_apply_op = ema.apply([fc_mean, fc_var])
-            #     with tf.control_dependencies([ema_apply_op]):
+            #     with tf.control_dependencies([ema_apply_op]): 
             #         return tf.identity(fc_mean), tf.identity(fc_var)
             # mean, var = mean_var_with_update()        
             # o = tf.nn.batch_normalization(o, 0, 1, shift, scale, 0.001)
@@ -108,7 +108,7 @@ with tf.device(gpu):
     with tf.name_scope('loss_layer'):
         with tf.name_scope('cal_entropy_loss'):
             label = tf.cast(tf.reshape(label, shape=[-1,1]), tf.float32)
-            entropy_loss = label*tf.log(y) + (1-label)*tf.log(y)
+            entropy_loss = label*tf.log(y + 1e-10) + (1-label)*tf.log(y + 1e-10)
             L1 = - tf.reduce_sum(entropy_loss)
         with tf.name_scope('cal_sim_loss'):
             L2_norm = 0
@@ -166,9 +166,7 @@ with tf.Session(config=sess_config) as sess:
     with tf.device(cpu):
         #load data
         users,items,labels = utils.load_data(config.train_data_path, config.interest_relations) 
-        users = users.apply(lambda x: node_mapping[x] if x in node_mapping else x)    
-        items = items.apply(lambda x: node_mapping[x] if x in node_mapping else x)
-        labels = list(labels.apply(lambda x: label_mapping[x] if x in label_mapping else x))
+        labels = list(labels.apply(lambda x: label_mapping[x]))
 
     total_step = 0
     batch_size = config.batch_size
@@ -188,7 +186,7 @@ with tf.Session(config=sess_config) as sess:
                 adjacent_matrix[cur_cur,neighbor] = network[cur_cur][neighbor]['label']
             
             la = np.reshape(np.array([labels[j]]),(-1,1))
-            loss,res, pred = sess.run([Loss, merged, y], 
+            loss,res, pred, _ = sess.run([Loss, merged, y, train_op], 
                                     feed_dict={
                                                 user:adjacent_matrix, 
                                                 item:[items[j]],
@@ -198,14 +196,14 @@ with tf.Session(config=sess_config) as sess:
             predictions.extend(np.ravel(pred).tolist())
             # print('epoch:{}, train_loss:{}'.format(total_step, loss))
             if total_step % batch_size == 0:
-                loss,_ = sess.run([Loss, merged], feed_dict={
+                loss,_,_ = sess.run([Loss, merged,decay_lr], feed_dict={
                                                         user:adjacent_matrix, 
                                                         item:[items[j]],
                                                         label:la})
                 # add summary to tf
                 writer.add_summary(res, total_step)
                 writer.add_run_metadata(run_metadata, 'step %03d' % total_step)  
-                print('epoch:{}, train_loss:{}'.format(total_step, loss))
+                print('epoch:{} iterations:{}, train_loss:{}'.format(epoch, total_step % len(users), loss))
         
         # perform evaluation
         fpr, tpr, threshold = metrics.roc_curve(np.ravel(np.array(labels)), predictions, pos_label=1)
@@ -222,13 +220,13 @@ with tf.Session(config=sess_config) as sess:
 
     print('train complete')
 
-    pd.DataFrame(evaluations).to_csv(config.score_path)
+    pd.DataFrame(evaluations).to_csv(config.score_path, index=False)
     #save model
-    # saver.save(sess,config.model_path)
+    saver.save(sess,config.model_path)
     tf.contrib.tfprof.model_analyzer.print_model_analysis(
         tf.get_default_graph(),
         run_meta=run_metadata,
         tfprof_options=tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY)
     
-    
+mail_utils.send_mail("ripple network trained completed", "train complete")
  

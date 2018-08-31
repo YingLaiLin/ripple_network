@@ -5,14 +5,14 @@ num_nodes = 4553
 interest_relations = [0,1,2]
 
 # hyperparameter here
-batch_size = 4
+batch_size = 20
 hops = 1
 epoches = 5 # 1~10
 embedding_size = 20
-learning_rate = 0.9
+learning_rate = 0.1
 momentum = 0.9
-lambda1 = 0.3
-lambda2 = 0.3
+lambda1 = 0.01
+lambda2 = 0.01
 
 # parameter for batch normalization
 mean = 0
@@ -21,9 +21,9 @@ epsilon = 0.001
 
 # specify data directory
 base_dir = 'data/'
-train_data_path = base_dir + "train.txt"
+train_data_path = base_dir + "x_train.txt"
 test_data_path = base_dir + "test.txt"
-network_path = base_dir + "network.txt"
+network_path = base_dir + "x_network.txt"
 
 # specify model directory here
 model_dir = 'params-%d/' % num_nodes
